@@ -1,0 +1,8 @@
+let
+  h1 = \a -> let x_4 = (h4) a
+             in Eq x_4 x_4
+  h2 = \x_3 -> x_3
+  h4 = \a -> let id_2 = h2
+             in (id_2) a
+in
+  (h1) a

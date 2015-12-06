@@ -1,0 +1,5 @@
+let
+  h1 = \x -> case x of True -> False;False -> h3 end
+  h3 = True
+in
+  (h1) x

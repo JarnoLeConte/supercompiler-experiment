@@ -1,0 +1,18 @@
+let
+  h1 = \a ->
+         \id ->
+           \not ->
+             \x ->
+               case x of
+                 True -> False
+                 False -> h3
+                 Otherwise -> let
+                                f_6 = id
+                                g_7 = (h5) not
+                              in
+                                ((f_6) g_7) a
+               end
+  h3 = True
+  h5 = \f_6 -> f_6
+in
+  ((((h1) a) id) not) x

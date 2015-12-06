@@ -1,0 +1,7 @@
+let
+  h1 = \f -> \y -> let id2_9 = h3
+                   in ((f) id2_9) y
+  h3 = let id_7 = \a_8 -> a_8
+       in (id_7) id_7
+in
+  ((h1) f) y

@@ -1,0 +1,3 @@
+let h1 = \a -> \f -> let x_2 = a
+                     in (f) x_2
+in ((h1) a) f

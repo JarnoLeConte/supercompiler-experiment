@@ -1,0 +1,15 @@
+let
+  h1 = let
+         f_8 = let false_5 = False
+               in false_5
+         t_6 = h6
+       in
+         Eq t_6 f_8
+  h4 = \x_3 -> x_3
+  h6 = let
+         id_2 = h4
+         true_4 = True
+       in
+         (id_2) true_4
+in
+  h1

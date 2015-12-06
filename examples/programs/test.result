@@ -1,0 +1,10 @@
+let
+  h1 = \id -> \id' -> let
+                        id3_19 = (h6) id'
+                        one_2 = h9
+                      in
+                        ((id) id3_19) one_2
+  h6 = \id' -> \z_20 -> case (id') z_20 of One -> Yes;Two -> False end
+  h9 = One
+in
+  ((h1) id) id'

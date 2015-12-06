@@ -1,0 +1,2 @@
+let h1 = \f -> \x -> (f) x
+in ((h1) f) x

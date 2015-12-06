@@ -1,0 +1,2 @@
+let h1 = \id' -> ((id') id') id'
+in (h1) id'

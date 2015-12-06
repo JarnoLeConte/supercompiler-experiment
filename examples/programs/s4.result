@@ -1,0 +1,11 @@
+let
+  h1 = \f -> \y -> let
+                     idA_2 = \a_3 -> let idB_5 = h2
+                                     in (idB_5) a_3
+                     idB_5 = h2
+                   in
+                     ((((f) idA_2) idB_5) idA_2) y
+  h2 = \a_3 -> let idB_5 = h2
+               in (idB_5) a_3
+in
+  ((h1) f) y

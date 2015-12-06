@@ -1,0 +1,3 @@
+let h1 = \a -> let x_2 = a
+               in x_2
+in (h1) a
