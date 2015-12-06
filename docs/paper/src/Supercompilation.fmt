@@ -1,0 +1,128 @@
+% \arrayhs
+\plainhs
+
+\newcommand{\technical}[1]{\textsl{#1}}
+\newcommand{\explain}[1]{\quad\{\;\text{#1}\;\}}
+\newcommand{\justify}[1]{\quad\{\;\text{#1}\;\}}
+
+\newcommand\contracted[1]{#1^{\rightarrowtriangle}}
+
+% the `doubleequals' macro is due to Jeremy Gibbons
+\def\doubleequals{\mathrel{\unitlength 0.01em
+  \begin{picture}(78,40)
+    \put(7,34){\line(1,0){25}} \put(45,34){\line(1,0){25}}
+    \put(7,14){\line(1,0){25}} \put(45,14){\line(1,0){25}}
+  \end{picture}}}
+
+%if style == newcode
+
+%else
+
+%format ^			            =  " "
+%format cdots			        =  "\cdots "
+%format ldots			        =  "\ldots "
+%format `elem`			        =  "\in "
+%format `o`			            =  "\mathrel{\cdot}"
+%format o                       =  "(\cdot)"
+%format ==                      =  "\doubleequals "
+%format /=                      =  "\not\doubleequals "
+%format forall (a)              =  "\forall " a
+%format .                       =  "\,.\,"
+%format not                     =  "\Varid{not}"
+%format <<                      =  "\mathit{RegularContracts}\rangle\enskip "
+
+%format :                       =  "\mathbin{::}"
+%format ::                      =  "\mathbin{:}"
+
+%format a1
+%format a1'
+%format a2
+%format b1
+%format b2
+
+%format loc                     =  "\ell "
+%format locs                    =  "\ell\mkern-2.328mus"
+%format loc'                    =  "\ell'' "
+%format locs'                   =  "\ell\mkern-2.328mus''"
+%format locsf                   =  "\ell\!s_f"
+%format locx                    =  "\ell_x"
+
+%format pre1
+%format pre2
+%format post1
+%format post2
+
+%format aT                      =  "\alpha "
+%format bT                      =  "\beta "
+%format cT                      =  "\gamma "
+%format dT                      =  "\delta"
+%format eT                      =  "\epsilon"
+%format fT                      =  "\varphi "
+%format sT                      =  "\sigma "
+%format tT                      =  "\tau "
+%format Gamma                   =  "\Gamma "
+
+%format f_                      =  "\contracted{\Varid{f}}"
+%format oddEven_                =  "\contracted{\Varid{oddEven}}"
+%format oddEven_'               =  "\contracted{\Varid{oddEven'}}"
+%format foldr_                  =  "\contracted{\Varid{foldr}}"
+%format fold_                   =  "\contracted{\Varid{fold}}"
+%format invfold_                =  "\contracted{\Varid{fold}}"
+%format listNatFold_            =  "\contracted{\Varid{listNatFold}}"
+%format contractedFold          =  "\contracted{\Varid{fold}}"
+%format contractedFold1         =  "\contracted{\Varid{fold_P}}"
+%format ContractedAlg           =  "\contracted{\Varid{Alg}}"
+%format ContractedAlgebra       =  "\contracted{\Varid{Algebra}}"
+%format sumListAlg_             =  "\contracted{\Varid{sumListAlg}}"
+%format treeEvenContract_R
+
+%format ==>                     =  "\Longrightarrow"
+
+%format >->                     =  "\twoheadrightarrow"
+%format >>->                    =  "\stackrel{d}{\longmapsto}"
+%format >*>                     =  "\times "
+%format (pair (a) (b))          =  (a, b)
+%format &                       =  "\mathrel{\&}"
+%format /--                     =  "\mathrel{\vdash}"
+%format (Bag (a))               =  "\lbag " a "\rbag "
+
+%format :->                     =  "\rightarrowtriangle "
+
+%format (negative a)            =  a "^-"
+%format (positive a)            =  a "^+"
+
+%format g' = g
+%format assert'                 =  "\Varid{assert}"
+%format varassert               =  "\Varid{assert}"
+%format <>                      =  "\mathbin{\diamond}"
+%format apply                   =  "\Varid{app}"
+%format prop'                   =  "\Varid{prop}"
+%format pair'                   =  "\Varid{pair}"
+%format list'                   =  "\Varid{list}"
+
+%endif % style == newcode
+
+%if style == newcode
+%format PROP x (p)              =  Prop ("\ " x " -> " p)
+%format FUNCTION x dom cod      =  Function dom (\ x -> cod)
+%format PAIR x l r              =  Pair l ("\ " x " -> " r)
+%format FUN x e                 =  fun ("\ " x " -> " e)
+%format FUN2 x y e              =  fun2 ("\ " x y " -> " e)
+%format FUN3 x y z e            =  fun3 ("\ " x y z " -> " e)
+%format FORALL x e              =  Forall ("\ " x " -> " e)
+%else
+%format (PROP x (p))            =  "\{\," x "\mid " p "\,\}"
+%format FUNCTION x (dom) (cod)  =  (x :: dom) >-> cod
+%format PAIR x (l) (r)          =  (x :: l) >*> r
+%format FUN x (e)               =  \ x :-> e
+%format FUN2 x y (e)            =  \ x "\;" y :-> e
+%format FUN3 x y z (e)          =  \ x "\;" y "\;" z :-> e
+%format FORALL x (e)            =  "\forall " x "\,.\," e
+%format (app (f) (l) x)         =  f "\;\mbox{}_{\loc{" l "}}" x
+%format (apps (f) (ls) x)       =  f "\;\mbox{}_{" ls "}" x
+%format (varapp (f) (l) x)      =  f "\;\mbox{}_{\loc{" l "}}" x
+%format (list (a))              =  [a]
+%\newcommand{\loc}[1]{(#1)}
+%\newcommand{\loc}[1]{\ensuremath{#1\urcorner}}
+\newcommand{\loc}[1]{\ensuremath{\langle#1\rangle}}
+%endif
