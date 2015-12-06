@@ -1,0 +1,86 @@
+module {CCO.HM.HS.Split}{
+  splitState
+}{{--where--}}
+
+optpragmas
+{
+{-# LANGUAGE ViewPatterns #-}
+}
+
+include "AG/Data.ag"
+
+imports
+{
+import CCO.HM.HS.Base
+import CCO.HM.HS.Evaluate
+import CCO.HM.HS.Rename
+import CCO.HM.HS.Print
+
+import qualified Data.Map as M
+}
+
+{
+
+-- Only used for outer Term, this will generate residual code with Let-bindings
+splitState :: State -> Bracket
+splitState s@(State h k e rn) =
+  trace ("### STATE ###\n " ++ ppp s) $
+  trace ("### SPLIT ###\n " ++ (ppp $ splitHeap rn h $ splitStack rn xs k $ splitTerm rn e) ++ "\n") $
+  -- trace (concatMap (ppp.snd) $ fst $ splitStack rn xs k $ splitTerm rn e)
+  -- trace (ppp $ snd $ splitStack rn xs k $ splitTerm rn e)
+  -- trace (ppp $ splitTerm rn e) $
+  splitHeap rn h $ splitStack rn xs k $ splitTerm rn e
+  where xs = case uterm e of Var x -> [x]; _ -> []
+
+splitTerm :: Renaming -> Term -> Bracket
+splitTerm rn e@(uterm -> Var _  ) = Bracket [] (\[] -> renameTerm rn e) []
+splitTerm rn e@(uterm -> Con _ _) = Bracket [] (\[] -> renameTerm rn e) []
+splitTerm rn e@(Term tag (Lam x b)) = Bracket [State M.empty [] b rn] (\[e] -> Term tag (Lam x e)) []
+splitTerm _ _ = error "Splitter can only split normalized terms."
+
+splitStack :: Renaming -> [Var] -> Stack -> Bracket -> ([(Var, Bracket)], Bracket)
+splitStack _ xs [] br                = ([], br)
+splitStack rn _  (Frame tag (FApp x):k) br        = splitStack rn [] k (plusBrackets [br] (\[e] -> Term tag (App e x)))
+-- splitStack xs (KPri op vs es:k) br = splitStack [] k (plusBrackets (br:map termBracket es) (\es -> Prim op (vs++es)))
+splitStack rn xs (Frame tag (FScr alts rn'):k) br     = ([],
+                                                              -- trace (ppp $ plusBrackets (br:zipWith mkAltBr ps es) (\(e:es) -> Term tag (Case e (zipWith Alt ps es)))) $
+                                                              plusBrackets (br:zipWith mkAltBr ps es) (\(e:es) -> Term tag (Case e (zipWith Alt ps es))))
+                                        where (ps,es) = unzip $ map fromAlt alts
+                                              mkAltBr p e = let h = M.fromList [(x,(p,rn))|x<-xs]
+                                                            in Bracket [State h k e rn] (\[e] -> e) []
+splitStack rn xs (Frame tag (FUpd x):k) br        =
+                                                    -- trace (ppp br) $
+                                                    ((x,br):xbrs', br')
+                                        where (xbrs', br') = splitStack rn (x:xs) k (termBracket rn (Term tag (Var x)))
+
+-- HEAP split
+-- XXX we don't encouter heap UPDATES / duplicate work
+-- XXX we don't specialize by passing let-bindings down where possible
+
+-- Transform heap into residual Let-bindings
+splitHeap :: Renaming -> Heap -> ([(Var, Bracket)], Bracket) -> Bracket
+splitHeap rn h (xbrs, br) =
+  -- trace ("splitheap (br:brs)\n" ++ concatMap ppp (br:brs)) $
+  mapHoles insertHeap $ plusBrackets (br:brs) residuBinder
+  where (xs, brs) = unzip (xbrs ++ [(x, termBracket rn' e) | (x,(e,rn')) <- M.toList h])
+        residuBinder [e] = renameTerm rn e
+        residuBinder (e:es) = letRec rn (xs `zip` es) e  -- XXX this letRec in combination with renaming will possibly make renamed variables to become bound (or not? verify!).
+        -- push heap into holes, XXX TODO improve, see Bolingbroke section split heap
+        insertHeap s@(State h' k' e' rn') = State (M.union h' h) k' e' rn'
+
+-- Split utils
+
+plusBrackets :: [Bracket] -> ([Term] -> Term) -> Bracket
+plusBrackets brs rb = Bracket (concatMap holes brs) rb' brs
+  where rb' = rb . zipWith ($) (map build brs) . splitInto (map holes brs)
+
+splitInto :: [[b]] -> [a] -> [[a]]
+splitInto goal = split (map length goal)
+  where split []      _ = []
+        split (i:ii) xs = take i xs : split ii (drop i xs)
+
+termBracket :: Renaming -> Term -> Bracket
+termBracket rn e = Bracket [State M.empty [] e rn] (\[e] -> e) [] --- XXX split term (renaming ?)
+-- termBracket _ _ = error "termBracket not implemented for none-value term (XXX ?)"
+-- termBracket rn e = Bracket [] (\[] -> renameTerm rn e)
+}

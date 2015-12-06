@@ -1,0 +1,259 @@
+module {CCO.HM.HS.Match}{
+  match
+}{{--where--}}
+
+optpragmas
+{
+{-# LANGUAGE PatternGuards, ViewPatterns, TupleSections #-}
+}
+
+include "AG/Data.ag"
+
+imports
+{
+import CCO.HM.HS.Base
+import CCO.HM.HS.Rename
+import CCO.HM.HS.FreeVars
+
+import Control.Monad (zipWithM, zipWithM_, liftM)
+import Control.Applicative
+import Data.Foldable (foldrM)
+import Data.Tuple (swap)
+import Data.Maybe (fromMaybe)
+import qualified Data.Map as M
+import qualified Data.Set as S
+import Control.Monad.Trans.State hiding (State)
+}
+
+{
+{- NOTES
+
+* The matcher return a substitution, such that if applied to the first term,
+  it will be renamed to the second term. It will skip if the mapping is non-injective.
+  IMPORTANT:
+  - Will not rename the binders.
+  - The substitution can contain mappings to variables that will be captured by binders
+    from the second term. But if we only use this substitution to rename free variables,
+    its okay!
+
+-}
+}
+
+
+{
+
+
+-- match data structure holding state
+
+
+type MSG = (MSG', State, MSG')
+type MSG' = (Heap, Renaming, Stack)
+
+data MatchStateRecord = MatchStateRecord
+  { fresh :: Int
+  , rS1 :: Renaming
+  , rS2 :: Renaming
+  , rH :: Heap
+  , rK :: Stack
+  , heap1 :: Heap
+  , heap2 :: Heap
+  } deriving (Show, Eq)
+
+initState :: State -> State -> MatchStateRecord
+initState (State h1 _ _ _) (State h2 _ _ _) = MatchStateRecord
+    { fresh = 0
+    , rS1 = M.empty
+    , rS2 = M.empty
+    , rH = M.empty
+    , rK = []
+    , heap1 = h1
+    , heap2 = h2
+    }
+
+
+
+
+-- run matcher
+
+type MatchState a = StateT MatchStateRecord Maybe a
+
+-- renaming from state1 to state2
+match :: State -> State -> Maybe Renaming
+match s1 s2 =
+  do (M.null -> True, rn, []) <- evalStateT (instanceMatch s1 s2) (initState s1 s2)
+     return rn
+
+instanceMatch :: State -> State -> MatchState MSG'
+instanceMatch s1 s2 =
+  do ((M.null -> True, rn1, []), _, (h2, rn2, k2)) <- msg s1 s2
+     case mkRn rn1 rn2 of
+        Just rn -> return (h2, rn, k2)
+        _ -> fail ""
+
+mkRn :: Renaming -> Renaming -> Maybe Renaming
+mkRn rn1 rn2 = invertMap rn1 >>= return . M.map (rn2 M.!)
+
+msg :: State -> State -> MatchState MSG
+msg (State _ k1 e1 _) (State _ k2 e2 _) =
+  do e <- matchTerm S.empty e1 e2
+     k <- matchStack k1 k2
+     modify $ \m -> m { rK = k }
+     fixup k1 k2 S.empty S.empty e
+
+matchTerm :: CapturedVars -> Term -> Term -> MatchState Term
+matchTerm c (Term _ e1) (Term tag e2) = Term tag <$> matchTerm' e1 e2
+  where
+    matchTerm' (Var x1)        (Var x2)        = Var <$> matchVar c x1 x2
+    matchTerm' (Lam x1 e1)     (Lam x2 e2)     = do x <- getFresh
+                                                    let rn1 = M.singleton x1 x
+                                                    let rn2 = M.singleton x2 x
+                                                    let e1' = renameTerm rn1 e1
+                                                    let e2' = renameTerm rn2 e2
+                                                    Lam x <$> matchTerm (S.insert x c) e1' e2'
+    matchTerm' (App e1 x1)     (App e2 x2)     = App <$> matchTerm c e1 e2 <*> matchVar c x1 x2
+    matchTerm' (Con con1 xs1)  (Con con2 xs2)
+                                | con1 == con2 = Con con1 <$> zipWithM (matchVar c) xs1 xs2
+                                | otherwise    = fail ""
+    matchTerm' (Case e1 alts1) (Case e2 alts2) = Case <$> matchTerm c e1 e2 <*> zipWithM (matchAlt c) alts1 alts2
+    matchTerm' (Let bs1 e1)    (Let bs2 e2)    = do xs <- getFreshVars (bindVars bs1)
+                                                    let rn1 = M.fromList $ zip (bindVars bs1) xs
+                                                    let rn2 = M.fromList $ zip (bindVars bs2) xs
+                                                    let bs1' = renameBinds rn1 bs1
+                                                    let bs2' = renameBinds rn2 bs2
+                                                    let e1' = renameTerm rn1 e1
+                                                    let e2' = renameTerm rn2 e2
+                                                    let c' = c `S.union` S.fromList xs
+                                                    Let <$> zipWithM (matchBind c') bs1' bs2' <*> matchTerm c' e1' e2'
+    matchTerm' _ _ = fail ""
+
+
+
+matchAlt :: CapturedVars -> Alt -> Alt -> MatchState Alt
+matchAlt c (Alt (uterm -> Con con1 xs1) e1) (Alt p@(uterm -> Con con2 xs2) e2)
+  | con1 /= con2 = fail ""
+  | otherwise    = do xs <- getFreshVars xs1
+                      let rn1 = M.fromList $ zip xs1 xs
+                      let rn2 = M.fromList $ zip xs2 xs
+                      let e1' = renameTerm rn1 e1
+                      let e2' = renameTerm rn2 e2
+                      let c' = c `S.union` S.fromList (M.elems rn1)
+                      Alt (renameTerm rn2 p) <$> matchTerm c' e1' e2'
+
+matchBind :: CapturedVars -> Bind -> Bind -> MatchState Bind
+matchBind c (Bind _ e1) (Bind x e2) = Bind x <$> matchTerm c e1 e2   -- binders from LetRec are already renamed and contains the captured vars.
+
+matchVar :: CapturedVars -> Var -> Var -> MatchState Var
+matchVar c x1 x2 | x1 == x2 && S.member x1 c      = return x1
+matchVar c x1 x2 | any (flip S.member c) [x1,x2]  = fail ""
+matchVar c x1 x2 =
+  do m <- get
+     case equalVar (inSubst x2 (rS2 m)) (inSubst x1 (rS1 m)) of
+        Just x  -> return x
+        Nothing -> do x <- getFresh
+                      modify $ \m -> m { rS1 = M.insert x x1 (rS1 m)
+                                       , rS2 = M.insert x x2 (rS2 m) }
+                      matchVar' x1 x2 x
+                      return x
+  where
+    equalVar :: Maybe Var -> Maybe Var -> Maybe Var
+    equalVar (Just y1) (Just y2) | y1 == y2 = Just y1
+    equalVar _ _ = Nothing
+    inSubst :: Var -> Renaming -> Maybe Var
+    inSubst x = lookup x . map swap . M.toList
+
+matchVar' :: Var -> Var -> Var -> MatchState ()
+matchVar' x1 x2 x =
+  do m <- get
+     case (M.lookup x1 (heap1 m), M.lookup x2 (heap2 m)) of
+      (Just (e1,_), Just (e2,_)) -> -- XXX do something with renaming???
+        case runStateT (matchTerm S.empty e1 e2) m of  -- XXX Verify correctness of testing for failure first, before using computation
+          Just (e,m) -> put $ m { rH = M.insert x (e, M.empty) (rH m) } -- XXX do something with renaming???
+          Nothing -> return ()
+      _ -> return ()
+
+matchStack :: Stack -> Stack -> MatchState Stack
+matchStack (Frame _ k1:ks1) (Frame tag k2:ks2)
+  = do m <- get
+       case runStateT (matchStackFrame k1 k2) m of  -- XXX Verify correctness of testing for failure first, before using computation
+         Just (k,m) -> do put m; (Frame tag k:) <$> matchStack ks1 ks2
+         Nothing -> return []
+matchStack  _ _ = return []
+
+matchStackFrame :: UStackFrame -> UStackFrame -> MatchState UStackFrame
+matchStackFrame (FUpd x1) (FUpd x2) = FUpd <$> matchVar S.empty x1 x2
+matchStackFrame (FApp x1) (FApp x2) = FApp <$> matchVar S.empty x1 x2
+matchStackFrame (FScr alts1 _) (FScr alts2 _) = FScr <$> zipWithM (matchAlt S.empty) alts1 alts2 <*> return M.empty -- XXX renaming?
+matchStackFrame _ _ = fail ""
+
+-- fresh variables
+
+getFresh :: MatchState Var
+getFresh = do s <- get
+              let i = fresh s
+              let v = 'm' : show i
+              put (s { fresh = i+1 })
+              return v
+
+getFreshVars :: [Var] -> MatchState [Var] -- not used yet, but freshRenamingMatch can be rewitten with this one
+getFreshVars = mapM (const getFresh)
+
+
+fixup :: Stack -> Stack
+      -> CapturedVars -> CapturedVars
+      -> Term
+      -> MatchState MSG
+fixup k1 k2 c1 c2 e =
+  do m <- get
+
+     let free = S.fromList $ fvsState $ State (rH m) (rK m) e M.empty -- XXX need to do renaming?
+
+     let s1' = filterKeys free (rS1 m)
+     let s2' = filterKeys free (rS2 m)
+     let h1' = filterKeys c1 (heap1 m) -- XXX do something with the renaminge?
+     let h2' = filterKeys c2 (heap2 m) -- XXX do something with the renaminge?
+     let k1' = drop (length $ rK m) k1
+     let k2' = drop (length $ rK m) k2
+
+     let y1 = createCaptureSet c1 h1' k1' s1' (rS1 m)
+     let y2 = createCaptureSet c2 h2' k2' s2' (rS2 m)
+
+     mapM_ (fixupVar rS1 (heap1 m) k1) (S.toList y1)
+     mapM_ (fixupVar rS2 (heap2 m) k2) (S.toList y2)
+
+     if any (not . S.null) [y1,y2]
+       then fixup k1 k2 (S.union c1 y1) (S.union c2 y2) e
+       else do m <- get
+               let msg1 = (h1',s1',k1')
+               let msg2 = (h2',s2',k2')
+               let common = State (rH m) (rK m) e M.empty
+               return (msg1, common, msg2)
+
+
+
+
+fixupVar :: (MatchStateRecord -> Renaming) -> Heap -> Stack -> Var -> MatchState ()
+fixupVar getS h k x
+  | Just (e,_) <- M.lookup x h, not (cheap e) = do m <- get  -- XXX do something with renaming in heap?
+                                                   let ys = [y | (y,x') <- M.toList (getS m), x==x']
+                                                   let h' = foldr M.delete (rH m) ys
+                                                   put $ m { rH = h' }
+  | otherwise = do m <- get
+                   let k' = takeWhile (not.isUpdateFrameX) (rK m)
+                   put $ m { rK = k' }
+                      where isUpdateFrameX (Frame _ (FUpd x')) | x==x' = True
+                            isUpdateFrameX _                           = False
+
+
+createCaptureSet :: CapturedVars -> Heap -> Stack -> Renaming -> Renaming -> CapturedVars
+createCaptureSet c h' k' s' s = S.fromList ys S.\\ c
+  where ys = concat [ fvsHeap h'
+                    , M.elems s'
+                    , fvsStack k'
+                    , [x1 | (y,x1) <- M.toList s, (z,x2) <- M.toList s, y/=z && x1==x2]
+                    ]
+
+filterKeys :: CapturedVars -> M.Map Var a -> M.Map Var a
+filterKeys c = M.filterWithKey (\k _ -> k `S.member` c)
+
+}
+

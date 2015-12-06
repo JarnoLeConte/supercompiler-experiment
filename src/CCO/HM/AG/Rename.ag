@@ -1,0 +1,161 @@
+module {CCO.HM.HS.Rename}{
+  renameTerm,
+  renameBinds,
+  renameVar,
+  revrename,
+  rename,
+  invertMap,
+  uniqRenameTerm,
+  uniqRenameTerm'
+}{{--where--}}
+
+include "AG/Data.ag"
+
+imports
+{
+import CCO.HM.HS.Base
+
+import qualified Data.Map as M
+import qualified Data.Set as S
+import Data.Maybe
+import Data.Foldable (foldrM)
+}
+
+
+-- renaming term by providing a rename map
+-- don't rename vars that are scoped
+-- and throw error if the renamed variable become bound (because of wrong alpha renaminf elsewhere)
+
+attr States State Heap HeapVal Stack StackFrame UStackFrame
+     Terms Term UTerm Alts Alt Binds Bind
+  inh renaming :: Renaming
+  inh captured :: CapturedVars  -- for error checking, if the variable after renaming become bound
+  syn renamed :: self
+
+sem UTerm
+  | *     loc.renameVar = renameVar @lhs.captured @lhs.renaming
+  | Var   lhs.renamed = Var $ @loc.renameVar @var
+  | Lam   lhs.renamed = Lam @var @body.renamed
+          body.renaming = M.delete @var @lhs.renaming
+          body.captured = S.insert @var @lhs.captured
+  | App   lhs.renamed = App @func.renamed (@loc.renameVar @arg)
+  | Con   lhs.renamed = Con @con (map @loc.renameVar @args)
+  | Case  lhs.renamed = Case @expr.renamed @alts.renamed
+  | Let   lhs.renamed = Let @binds.renamed @body.renamed
+          binds.renaming = @loc.renaming
+          body.renaming = @loc.renaming
+          loc.renaming = foldr M.delete @lhs.renaming (bindVars @binds.copy)
+          binds.captured = @loc.captured
+          body.captured = @loc.captured
+          loc.captured = foldr S.insert @lhs.captured (bindVars @binds.copy)
+sem Alt
+  | Alt   lhs.renamed = Alt @con.copy @expr.renamed
+          expr.renaming = foldr M.delete @lhs.renaming (conVars (uterm @con.copy))
+          expr.captured = foldr S.insert @lhs.captured (conVars (uterm @con.copy))
+
+sem Bind
+  | Bind  lhs.renamed = Bind @var @expr.renamed
+          expr.renaming = @lhs.renaming -- binders already removed from renaming-set in parent let.
+          expr.captured = @lhs.captured -- already inserted in parten let
+
+{
+renameTerm :: Renaming -> Term -> Term
+renameTerm rn e = renamed_Syn_Term $ wrap_Term (sem_Term e) $
+  Inh_Term { renaming_Inh_Term = rn
+           , captured_Inh_Term = S.empty
+           , uniqRenaming_Inh_Term = M.empty
+           , uniqRenamer_Inh_Term = 1 }
+
+renameBinds :: Renaming -> Binds -> Binds
+renameBinds rn bs = map (mapBind (renameTerm rn)) bs
+
+renameVar :: CapturedVars -> Renaming -> Var -> Var
+renameVar c rn x = maybe x captureCheck (M.lookup x rn) -- XXX Must we iterate transitive lookups? Probably not because map already contain most actual mapping?
+  where captureCheck x | S.member x c = error $ "Var " ++ show x ++ " become bound after renaming. Check alpha renaming!"
+                       | otherwise = x
+
+rename :: Renaming -> Var -> Var
+rename rn x = fromMaybe x (M.lookup x rn)  -- XXX Must we iterate transitive lookups? Probably not because map already contain most actual mapping?
+
+-- reverse rename
+revrename :: Renaming -> Var -> Var
+revrename rn x = case invertMap rn of
+  Just rn -> rename rn x
+  Nothing -> error "can't invert map"
+
+invertMap :: Renaming -> Maybe Renaming
+invertMap = foldrM inject M.empty . M.toList
+  where inject (k,v) m | M.member v m = Nothing -- can't invert an non-injective map
+                       | otherwise    = Just (M.insert v k m)  -- swap key value
+
+}
+
+
+
+
+
+-- initial uniqueness renaming
+
+attr Term UTerm Alts Alt Binds Bind
+  chn uniqRenamer :: Int
+  inh uniqRenaming :: Renaming
+  syn uniqRenamed :: self
+
+attr Binds Bind
+  syn renamingBindsUp use {M.union} {M.empty} :: Renaming
+  inh renamingBindsDown :: Renaming
+
+sem UTerm Bind Alt
+  | *     loc.uniqRenamer' :: uniqueref uniqRenamer
+          loc.uniqVar = \var -> var ++ "_" ++ show @loc.uniqRenamer'
+
+sem UTerm
+  | *     loc.uniqRenameVar = renameVar S.empty @lhs.uniqRenaming
+  | Var   lhs.uniqRenamed = Var (@loc.uniqRenameVar @var)
+  | Lam   lhs.uniqRenamed = Lam (@loc.uniqVar @var) @body.uniqRenamed
+          body.uniqRenaming = M.insert @var (@loc.uniqVar @var) @lhs.uniqRenaming
+  | App   lhs.uniqRenamed = App @func.uniqRenamed (@loc.uniqRenameVar @arg)
+  | Con   lhs.uniqRenamed = Con @con (map @loc.uniqRenameVar @args)
+  | Case  lhs.uniqRenamed = Case @expr.uniqRenamed @alts.uniqRenamed
+  | Let   lhs.uniqRenamed = Let @binds.uniqRenamed @body.uniqRenamed
+          body.uniqRenaming = @binds.renamingBindsUp `M.union` @lhs.uniqRenaming
+          binds.renamingBindsDown = @binds.renamingBindsUp
+
+sem Alt
+  | Alt   lhs.uniqRenamed = let Term tag (Con con _) = @con.copy
+                            in Alt (Term tag (Con con @loc.args')) @expr.uniqRenamed
+          expr.uniqRenaming = M.fromList (zip @loc.args @loc.args') `M.union` @lhs.uniqRenaming
+          loc.args  = let Con _ args = uterm @con.copy in args
+          loc.args' = zipWith (\x i -> x ++ "[" ++ show i ++ "]") (map @loc.uniqVar @loc.args) [1..]
+
+sem Bind
+  | Bind  lhs.uniqRenamed = Bind (@lhs.renamingBindsDown M.! @var) @expr.uniqRenamed
+          expr.uniqRenaming = @lhs.renamingBindsDown `M.union` @lhs.uniqRenaming  -- renaming of binders in this group passed down
+          lhs.renamingBindsUp = M.singleton @var (@loc.uniqVar @var)   -- add this renaming to the binders group in let-parent
+
+sem UTerm -- prevent chaining in higher order terms
+  | Var  lhs.uniqRenamer = @lhs.uniqRenamer
+  | Con  lhs.uniqRenamer = @lhs.uniqRenamer
+  | Lam  lhs.uniqRenamer = @body.uniqRenamer
+
+
+{
+
+uniqRenameTerm :: Term -> Term
+uniqRenameTerm = fst . uniqRenameTerm' 1
+
+uniqRenameTerm' :: Int -> Term -> (Term, Int)
+uniqRenameTerm' i e = (uniqRenamed_Syn_Term result, uniqRenamer_Syn_Term result)
+  where result = wrap_Term (sem_Term e) $
+          Inh_Term { renaming_Inh_Term = M.empty
+                   , captured_Inh_Term = S.empty
+                   , uniqRenaming_Inh_Term = M.empty
+                   , uniqRenamer_Inh_Term = i }
+
+nextUnique :: Int -> (Int, Int)
+nextUnique u = (u+1, u)
+}
+
+
+
+

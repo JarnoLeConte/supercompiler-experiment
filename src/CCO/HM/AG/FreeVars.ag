@@ -1,0 +1,83 @@
+module {CCO.HM.HS.FreeVars}{
+  fvs,
+  fvs',
+  fvsState,
+  fvsStack,
+  fvsHeap
+}{{--where--}}
+
+optpragmas
+{
+{-# LANGUAGE ViewPatterns #-}
+}
+
+include "AG/Data.ag"
+
+imports
+{
+import CCO.HM.HS.Base
+import CCO.HM.HS.Rename
+
+import qualified Data.Set as S
+}
+
+-------------------------------------------------------------------------------
+-- Free vars
+-------------------------------------------------------------------------------
+
+{
+-- XXX need also return variable lookups from heap ???
+-- Probably not, because these variables will be considerend in the next reduce/split step
+fvs :: Term -> [Var]
+fvs e = S.toList $ fvs_Syn_Term $ wrap_Term (sem_Term e) $ Inh_Term
+
+fvs' :: UTerm -> [Var]
+fvs' e = S.toList $ fvs_Syn_UTerm $ wrap_UTerm (sem_UTerm e) $ Inh_UTerm
+
+fvsState :: State -> [Var]
+fvsState s = S.toList $ fvs_Syn_State $ wrap_State (sem_State s) $ Inh_State
+
+fvsHeap :: Heap -> [Var]
+fvsHeap h = S.toList (fvs S.\\ bvs)
+  where fvs = fvs_Syn_Heap res
+        bvs = bvs_Syn_Heap res
+        res = wrap_Heap (sem_Heap h) $ Inh_Heap
+
+fvsStack :: Stack -> [Var]
+fvsStack k = S.toList (fvs S.\\ bvs)
+  where fvs = fvs_Syn_Stack res
+        bvs = bvs_Syn_Stack res
+        res = wrap_Stack (sem_Stack k) $ Inh_Stack
+}
+
+attr State Heap HeapVal Stack StackFrame UStackFrame Term UTerm Alts Alt Binds Bind
+  syn fvs use {S.union} {S.empty} :: {S.Set Var}
+  syn bvs use {S.union} {S.empty} :: {S.Set Var} -- bound variables (internal use only)
+
+sem State
+  | State   lhs.fvs  = let fvs = S.map (rename @rn) @term.fvs `S.union` @stack.fvs `S.union` @heap.fvs
+                       in fvs S.\\ @loc.bvs
+            loc.bvs  = @heap.bvs `S.union` @stack.bvs
+sem Heap
+  | Entry   lhs.bvs  = S.insert @key @tl.bvs
+            lhs.fvs  = let (_,rn) = @val.copy
+                       in S.map (rename rn) @val.fvs `S.union` @tl.fvs
+
+sem UStackFrame
+  | FApp    lhs.fvs  = S.singleton @x
+  | FUpd    lhs.bvs  = S.singleton @x
+  | FScr    lhs.fvs  = S.map (rename @rn) @alts.fvs
+
+sem UTerm
+  | Var     lhs.fvs  = S.singleton @var
+  | Lam     lhs.fvs  = S.delete @var @body.fvs
+  | App     lhs.fvs  = @func.fvs `S.union` S.singleton @arg
+  | Con     lhs.fvs  = S.fromList @args
+  | Let     lhs.fvs  = let bindVars = S.fromList $ map (fst.fromBind) @binds.copy
+                       in S.union @binds.fvs @body.fvs S.\\ bindVars
+sem Bind
+  | Bind    lhs.fvs  = S.delete @var @expr.fvs
+
+sem Alt
+  | Alt     lhs.fvs  = let Con _ args = uterm @con.copy
+                       in @expr.fvs S.\\ S.fromList args

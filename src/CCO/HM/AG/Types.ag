@@ -1,0 +1,15 @@
+module {CCO.HM.HS.Types}{}{{--where--}}
+
+imports
+{
+import qualified Data.Map as M
+import qualified Data.Set as S
+}
+
+
+{
+type Var = String
+type Tag = Int
+type Renaming = M.Map Var Var
+type CapturedVars = S.Set Var
+}

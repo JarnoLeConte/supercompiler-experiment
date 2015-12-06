@@ -1,0 +1,220 @@
+module {CCO.HM.HS.Print}{
+  ppp
+}{{--where--}}
+
+include "AG/Data.ag"
+
+imports
+{
+import CCO.HM.HS.Base
+import CCO.HM.HS.Evaluate
+import CCO.HM.HS.DeadCode
+import CCO.Printing
+}
+
+-------------------------------------------------------------------------------
+-- Pretty printing
+-------------------------------------------------------------------------------
+
+attr State Heap HeapVal StackFrame UStackFrame Bracket
+  syn ppML :: {Doc}  -- pretty printing (multiline mode)
+attr States Stack Brackets
+  syn ppML use {(:)} {[]} :: {[Doc]}  -- pretty printing (multiline mode)
+
+attr Brackets Bracket
+  syn bracketLeafs use {(++)} {[]} :: Brackets
+
+sem State
+  | State  lhs.ppML = text "-----------------------------------" >-<
+                      red (text "HEAP: ") >-< indent 2 @heap.ppML >-< text " " >-<
+                      red (text "STACK: ") >-< indent 2 (above @stack.ppML) >-< text " " >-<
+                      red (text "TERM: ") >-< indent 2 @term.ppML >-< text " " >-<
+                      red (text "RENAMING: ") >-< indent 2 (text $ show @rn) >-< text " " >-<
+                      red (text "REBUILD: ") >-< indent 2 (pp $ deadCodeRemoval $ rebuild @copy) >-<
+                      text "-----------------------------------"
+
+sem Heap
+  | Nil     lhs.ppML = empty
+  | Entry   lhs.ppML = text @key >#< text "->" >#< @val.ppML >-< @tl.ppML
+
+sem UStackFrame
+  | FUpd    lhs.ppML = text "Update" >#< text @x
+  | FApp    lhs.ppML = text "Apply" >#< text @x
+  | FScr    lhs.ppML = text "CaseOf"
+
+sem Bracket
+  -- | Bracket lhs.ppML = text "[[" >-< indent 2 (above @holes.ppML) >-< text "]]"
+  | Bracket  lhs.bracketLeafs = if null @brackets.copy then [@copy] else @brackets.bracketLeafs
+             lhs.ppML = text "[[BRACKET" >#< (if null @holes.copy then text "*" else empty) >-< indent 2
+                         ((text "rebuild: " >#< (text $ ppp $ @build $ map rebuild @holes.copy)) >-<
+                          (if null @brackets.copy then empty else text "components: " >#<  above (map (text.ppp) @brackets.bracketLeafs)) >-<
+                          (if null @brackets.copy then empty else text "holes: " >#< (if length @holes.copy > 0 then above @holes.ppML else text "[]"))
+                         ) >-< text "]]"
+
+                      -- if length @holes.copy > 0
+                      --  then
+                      --    text "[[BRACKET" >-< indent 2
+                      --    ((text "rebuild: " >#< (text $ ppp $ @build $ map rebuild @holes.copy)) >-<
+                      --     (text "holes: " >#< above @holes.ppML)
+                      --    ) >-< text "]]"
+                      --  else
+                      --   text "[[BRACKET TERMINAL" >-< indent 2
+                      --   (text $ (ppp $ @build $ map rebuild @holes.copy) ++ "*")
+                      --   >-< text "]]"
+
+
+attr Term UTerm Alt Bind
+  syn ppSL :: {Doc}  -- pretty printing (single-line mode)
+  syn ppML :: {Doc}  -- pretty printing (multiline mode)
+
+attr Terms Alts Binds
+  syn ppSL use {(:)} {[]} :: {[Doc]}  -- pretty printing (single-line mode)
+  syn ppML use {(:)} {[]} :: {[Doc]}  -- pretty printing (multiline mode)
+
+sem UTerm
+  -- | Nat    loc.ppSL = text $ show @x
+  --          lhs.ppML = @loc.ppSL
+  | Var    loc.ppSL = text @var
+           lhs.ppML = @loc.ppSL
+  | Lam    loc.ppSL = ppBinderSL "\\" (text @var) @body.ppSL
+           lhs.ppML = @loc.ppSL >^<
+                      ppBinderML "\\" (text @var) @body.ppML
+  | App    loc.ppSL = parens @func.ppSL >#< (text @arg)
+           lhs.ppML = @loc.ppSL >^<
+                      parens @func.ppML >#< (text @arg)
+  | Con    loc.ppSL = text @con >#< foldr (ppInfixSL @lhs.prec ("", 10)) empty (map text @args)
+           lhs.ppML = @loc.ppSL
+  | Let    loc.ppSL = @loc.ppML
+           loc.ppML = if length @binds.copy == 1
+                        then text "let" >#< head @binds.ppSL >-< text "in" >#< @body.ppML
+                        else text "let" >-< indent 2 (above @binds.ppML) >-< text "in" >-< indent 2 @body.ppSL
+  | Case   loc.ppSL = text "case" >#< @expr.ppSL >#< text "of" >#< sepBy @alts.ppSL semicolon  >#< text "end"
+           lhs.ppML = @loc.ppSL >^<
+                      text "case" >#< @expr.ppSL >#< text "of" >-< indent 2 (above @alts.ppML) >-< text "end"
+
+
+sem Alt
+  | Alt    loc.ppSL = @con.ppSL >#< text "->" >#< @expr.ppSL
+           loc.ppML = @con.ppML >#< text "->" >#< @expr.ppML
+
+sem Bind
+  | Bind   loc.ppSL = text @var >#< text "=" >#< @expr.ppSL
+           loc.ppML = text @var >#< text "=" >#< @expr.ppML
+
+
+
+
+-------------------------------------------------------------------------------
+-- Precedence levels
+-------------------------------------------------------------------------------
+
+{
+-- | Type of precedence levels.
+type Prec = Int
+}
+
+attr Terms Term UTerm Alts Alt Binds Bind
+     States State Heap HeapVal Stack StackFrame UStackFrame
+  inh prec :: {Prec}
+
+
+sem UTerm
+  | Lam   body.prec = 0
+  | App   func.prec = 10
+  | Let   body.prec = 0
+  -- | Prim  args.prec = 11
+
+
+-- attr State StateD Heap Stack StackFrame
+--   inh prec :: {Prec}
+
+-- sem State
+--   | Tuple  x1.prec = 0
+--            x2.prec = 0
+--            x3.prec = 0
+
+-- sem StateD
+--   | Tuple  x1.prec = 0
+
+{
+-- | Pretty prints in single-line mode, given the precedence level of its
+-- immediate context, a term constructed from a binary operator of a specified
+-- precedence level.
+--
+-- A term is enclosed in parentheses if the precedence level of its operator
+-- is less than the precedence level of the enclosing context.
+
+ppInfixSL :: Prec -> (String, Prec) -> Doc -> Doc -> Doc
+ppInfixSL ctx (op, prec) l r = modifier $ l >#< ppOp >#< r
+  where
+    modifier = if prec < ctx then parens else id
+    ppOp     = text op
+
+-- | Pretty prints in multiline mode, given the precedence level of its
+-- immediate context, a term constructed from a binary operator of a specified
+-- precedence level.
+--
+-- A term is enclosed in parentheses if the precedence level of its operator
+-- is less than the precedence level of the enclosing context.
+
+ppInfixML :: Prec -> (String, Prec) -> Doc -> Doc -> Doc
+ppInfixML ctx (op, prec) l r = modifier $ l >#< ppOp >-< r
+  where
+    modifier doc = if prec < ctx then (lparen >#< doc >-< rparen) else doc
+    ppOp         = text op
+}
+
+-------------------------------------------------------------------------------
+-- Binders
+-------------------------------------------------------------------------------
+
+{
+-- | Pretty prints in single-line mode, a construct involving a binder.
+ppBinderSL :: String -> Doc -> Doc -> Doc
+ppBinderSL binder arg body = text binder >|< arg >|< text " ->" >#< body
+
+-- | Pretty prints in multiline mode, a construct involving a binder.
+ppBinderML :: String -> Doc -> Doc -> Doc
+ppBinderML binder arg body = text binder >|< arg >|<  text " ->" >-< indent 2 body
+}
+
+
+
+
+{
+-- debug
+
+debugIO :: Printable p => p -> IO p
+debugIO p = do renderIO_ 79 (pp p)
+               return p
+
+-------------------------------------------------------------------------------
+-- Pretty printing
+-------------------------------------------------------------------------------
+
+ppp :: Printable p => p -> String
+ppp = render_ 79 . pp
+
+instance Printable Term where
+  pp t = ppML_Syn_Term (wrap_Term (sem_Term t) Inh_Term { prec_Inh_Term = 0 })
+
+instance Printable UTerm where
+  pp t = ppML_Syn_UTerm (wrap_UTerm (sem_UTerm t) Inh_UTerm { prec_Inh_UTerm = 0 })
+
+instance Printable State where
+  pp t = ppML_Syn_State (wrap_State (sem_State t) Inh_State { prec_Inh_State = 0 })
+
+instance Printable Bracket where
+  pp t = ppML_Syn_Bracket (wrap_Bracket (sem_Bracket t) Inh_Bracket { })
+
+
+
+-- instance Printable Heap where
+--   pp t = ppML_Syn_UTerm (wrap_UTerm (sem_UTerm t) inh_UTerm)
+
+-- instance Printable Stack where
+--   pp t = ppML_Syn_UTerm (wrap_UTerm (sem_UTerm t) inh_UTerm)
+
+
+
+}

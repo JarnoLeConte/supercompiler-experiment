@@ -1,0 +1,121 @@
+module {CCO.HM.HS.Supercompile}{
+  supercompile
+}{{--where--}}
+
+include "AG/Data.ag"
+
+imports
+{
+import CCO.HM.HS.Base
+import CCO.HM.HS.Terminate
+import CCO.HM.HS.Print
+import CCO.HM.HS.Match
+import CCO.HM.HS.Rename
+import CCO.HM.HS.Evaluate
+import CCO.HM.HS.Split
+import CCO.HM.HS.FreeVars
+import CCO.HM.HS.DeadCode
+
+import qualified Data.Map as M
+import qualified Data.Set as S
+import qualified Safe
+import Data.Maybe
+}
+
+{
+supercompile :: Term -> Term
+supercompile =
+   deadCodeRemoval . sc . wrapState . uniqRenameTerm . taggedTerm
+                    --sc . wrapState . uniqRenameTerm . taggedTerm
+  where
+    wrapState t = State M.empty [] t M.empty
+    -- run = rebuild $ reduce $ s
+    -- br = splitState (reduce s)
+    -- result = build br (map rebuild (holes br))
+}
+
+
+
+
+attr State
+  syn sc :: Term
+  syn bindings :: {[(Var, Term)]}
+attr States
+  syn sc use {(:)} {[]} :: {[Term]}
+  syn bindings use {(++)} {[]} :: {[(Var, Term)]}
+attr States State
+  inh hist :: History
+  chn promises :: Promises
+  chn freshProm :: Int
+
+sem State
+  | State   lhs.sc          = if @loc.isMemo then fromMaybe (error "fromJust") @loc.memo else build @loc.bracket @holes.sc
+            lhs.bindings    = if @loc.isMemo then [] else (@loc.freshVar, lambdas @loc.freeVars $ build @loc.bracket @holes.sc) : @holes.bindings
+            lhs.promises    = if @loc.isMemo then @lhs.promises else @holes.promises
+            lhs.freshProm   = if @loc.isMemo then @lhs.freshProm else @holes.freshProm
+
+            loc.isMemo      = maybe False (const True) @loc.memo
+            loc.memo        =
+                              --debug "Memo" $ trace ("SuperCompile: " ++ ppp @term.copy) $
+                              fmap (\((x,_,_), e) -> trace ("### MEMO-"++show x++" ###\n" ++ ppp @copy) e) $
+                              -- fmap (\((x, rn, state), e) -> debug ("USE MEMO " ++ ppp @copy ++ ppp state ++ show rn ++ show x ++ "\n") e) $
+                              -- fmap snd $
+                              Safe.headMay [ ((x, rn, state), Term tag (Var x) `apps` map (rename rn) fvs)
+                                           | Promise tag x fvs state <- @lhs.promises
+                                           , Just rn <- [match (state) (@copy)]
+                                           ]
+
+
+
+            inst.holes :: States
+            inst.holes = holes @loc.bracket
+            holes.hist = tagbagState @copy : @lhs.hist
+            holes.promises = --trace ("prom " ++ show @loc.freshVar ++ ": " ++ show @loc.freeVars ++ "@\n" ++ ppp @copy) $
+                             (Promise @loc.freshTag @loc.freshVar @loc.freeVars @copy) : @lhs.promises
+            holes.freshProm = @lhs.freshProm + 1
+
+
+            loc.bracket = case terminate @lhs.hist @copy of
+                           True -> splitState $
+                                   --trace ("Reduce " ++ ppp @term.copy) $
+                                   normalize $ reduce @copy
+                           False ->
+                                    trace ("Terminate NONE:" ++ ppp @copy) $
+                                    splitState $ normalize @copy
+
+
+            loc.freshVarN   = @lhs.freshProm
+            loc.freshVar    = 'h' : show @loc.freshVarN
+            loc.freshTag    = (-1) - @loc.freshVarN
+            loc.freeVars    =
+                              --trace ("rebuid2" ++ ppp (deadCodeRemoval $ rebuild @copy) ++ show (fvs  $ deadCodeRemoval $ rebuild @copy)) $
+                               fvs  $ deadCodeRemoval $ rebuild @copy
+                              --fvsState @copy
+                              -- replace fvs by fvsState when
+                              -- deadCodeRemoval is not longer required because
+                              -- of an optimized heap-pushdown technique in splitter
+
+
+
+{
+sc :: State -> Term
+sc s = -- error $ ppp $ fst $ reduce 999 $ fst $ normalize 99 s
+       letRec M.empty (bindings_Syn_State syn) (Term 0 (Var name) `apps` fv)
+  where Promise _ name fv _ = last $ promises_Syn_State syn
+        syn = wrap_State (sem_State s) $
+          Inh_State { hist_Inh_State = []
+                    , promises_Inh_State = []
+                    , freshProm_Inh_State = 1
+                    }
+
+apps :: Term -> [Var] -> Term
+apps = foldl (\func arg -> Term (-1) (App func arg))
+
+lambdas :: [Var] -> Term -> Term
+lambdas = flip (foldr (\var body -> Term (-1) (Lam var body)))
+
+nextUnique :: Int -> (Int, Int)
+nextUnique u = (u+1, u)
+}
+
+

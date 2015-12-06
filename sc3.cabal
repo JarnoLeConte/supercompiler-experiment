@@ -1,0 +1,94 @@
+name:                  sc3
+version:               0.0.3
+synopsis:              Supercompiler for subset of UHC Core.
+
+author:                Jarno Le Conté <jarno.leconte@me.com>
+
+build-type:            Simple
+cabal-version:         >= 1.8
+extra-source-files:    Makefile
+
+
+-- Cabal could build 4 executables.
+-- The first three are required to run the supercompiler.
+-- The fourth binary could be used to match-component of the supercompiler.
+--
+-- 1. parse-hm : parse hm language
+-- 2. pp-hm : pretty print hm language
+-- 3. supercompile : supercompile hm language
+-- 4. match : expressions equallity test, using the match-component of the supercompiler
+
+
+executable parse-hm
+  main-is:             ParseHM.hs
+  build-depends:       base >= 4 && < 5, containers >= 0.5, safe >= 0.3, uu-cco >= 0.1.0.1, transformers >= 0.3.0.0
+  other-modules:       CCO.HM,
+                       CCO.HM.Base,
+                       CCO.HM.Lexer,
+                       CCO.HM.Parser,
+                       CCO.HM.HS.Base,
+                       CCO.HM.HS.Data,
+                       CCO.HM.HS.Evaluate,
+                       CCO.HM.HS.FreeVars,
+                       CCO.HM.HS.Match,
+                       CCO.HM.HS.Print,
+                       CCO.HM.HS.Rename,
+                       CCO.HM.HS.Split,
+                       CCO.HM.HS.Supercompile,
+                       CCO.HM.HS.Terminate,
+                       CCO.HM.HS.DeadCode
+  hs-source-dirs:      src
+
+executable pp-hm
+  main-is:             PpHM.hs
+  build-depends:       base >= 4 && < 5, containers >= 0.5, safe >= 0.3, uu-cco >= 0.1.0.1, transformers >= 0.3.0.0
+  other-modules:       CCO.HM,
+                       CCO.HM.Base,
+                       CCO.HM.HS.Base,
+                       CCO.HM.HS.Data,
+                       CCO.HM.HS.Evaluate,
+                       CCO.HM.HS.FreeVars,
+                       CCO.HM.HS.Match,
+                       CCO.HM.HS.Print,
+                       CCO.HM.HS.Rename,
+                       CCO.HM.HS.Split,
+                       CCO.HM.HS.Supercompile,
+                       CCO.HM.HS.Terminate,
+                       CCO.HM.HS.DeadCode
+  hs-source-dirs:      src
+
+executable supercompile
+  main-is:             Supercompile.hs
+  build-depends:       base >= 4 && < 5, containers >= 0.5, safe >= 0.3, uu-cco >= 0.1.0.1, transformers >= 0.3.0.0
+  other-modules:       CCO.HM,
+                       CCO.HM.Base,
+                       CCO.HM.HS.Base,
+                       CCO.HM.HS.Data,
+                       CCO.HM.HS.Evaluate,
+                       CCO.HM.HS.FreeVars,
+                       CCO.HM.HS.Match,
+                       CCO.HM.HS.Print,
+                       CCO.HM.HS.Rename,
+                       CCO.HM.HS.Split,
+                       CCO.HM.HS.Supercompile,
+                       CCO.HM.HS.Terminate,
+                       CCO.HM.HS.DeadCode
+  hs-source-dirs:      src
+
+executable match
+  main-is:             Match.hs
+  build-depends:       base >= 4 && < 5, containers >= 0.5, safe >= 0.3, uu-cco >= 0.1.0.1, transformers >= 0.3.0.0
+  other-modules:       CCO.HM,
+                       CCO.HM.Base,
+                       CCO.HM.HS.Base,
+                       CCO.HM.HS.Data,
+                       CCO.HM.HS.Evaluate,
+                       CCO.HM.HS.FreeVars,
+                       CCO.HM.HS.Match,
+                       CCO.HM.HS.Print,
+                       CCO.HM.HS.Rename,
+                       CCO.HM.HS.Split,
+                       CCO.HM.HS.Supercompile,
+                       CCO.HM.HS.Terminate,
+                       CCO.HM.HS.DeadCode
+  hs-source-dirs:      src

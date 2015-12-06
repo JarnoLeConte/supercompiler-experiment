@@ -1,0 +1,10 @@
+.DS_Store
+
+.cabal-sandbox
+cabal.sandbox.config
+bin
+dist
+HS*
+
+*.debug
+*.result

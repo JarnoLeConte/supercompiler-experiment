@@ -1,0 +1,182 @@
+module {CCO.HM.HS.Evaluate}{
+  normalize,
+  reduce,
+  rebuild,
+  letRec
+}{{--where--}}
+
+optpragmas
+{
+{-# LANGUAGE PatternGuards, ViewPatterns #-}
+}
+
+include "AG/Data.ag"
+
+imports
+{
+import CCO.HM.HS.Base
+import CCO.HM.HS.Terminate
+import CCO.HM.HS.Rename
+
+import Data.List (find)
+import Data.Maybe (fromJust,fromMaybe)
+import qualified Data.Map as M
+}
+
+{
+{- NOTES
+* When adding a higher-order instance, make sure that all AG's have rules specified
+  to deal with the extra term. Otherwise this new term will be taken into account.
+-}
+}
+
+
+
+attr Operation Step
+  syn return use {error "syn result"} {error "syn result"} :: State
+  inh heap :: {Heap}
+  inh stack :: {Stack}
+  inh term :: {Term}
+  inh rn :: {Renaming}
+  inh hist :: {History}
+  inh normalizeOnly :: {Bool}
+
+
+-- Drive reduce/normalisation
+sem Step Operation
+  | *       loc.state  = State @lhs.heap @lhs.stack @lhs.term @lhs.rn
+sem Step
+  | Step    inst.step :: Operation
+            inst.step  = --debug ("Operation " ++ if @lhs.normalizeOnly then "(N)" else "(R)") $
+                         operation @loc.state
+sem Operation
+  | *       inst.next :: Step
+            inst.next  = Step
+  | OpNone  lhs.return = @loc.state -- stop and return
+  | OpBeta  lhs.return = if @lhs.normalizeOnly
+                         then @loc.state -- no beta reduction, stop and return
+                         else if not $ terminate @lhs.hist @loc.state
+                              then trace ("Terminate eval NONE!")  $
+                                   @loc.state  -- no beta reduction, stop and return
+                              else @next.return -- allow beta reduction, recurse
+            next.hist  = tagbagState @loc.state : @lhs.hist
+
+
+-- Step-function performing a single opration
+sem Operation
+
+  | OpVar   next.heap  = M.delete @loc.var @lhs.heap
+            next.stack = Frame @loc.tag (FUpd @loc.var) : @lhs.stack
+            next.term  = fst $ @lhs.heap M.! @loc.var
+            next.rn    = snd $ @lhs.heap M.! @loc.var
+
+            loc.var    = let Var x = uterm @lhs.term in rename @lhs.rn x
+            loc.tag    = let Term tag _ = @lhs.term in tag
+
+  | OpApp   next.term  = let App func _ = uterm @lhs.term in func
+            next.stack = let Term tag (App _ arg) = @lhs.term in Frame tag (FApp (rename @lhs.rn arg)) : @lhs.stack
+
+  | OpLet   next.term  = let Let _ body = uterm @lhs.term in body
+            next.heap  = let Let binds _ = uterm @lhs.term
+                             bs = [(x, (e, @lhs.rn)) | Bind x e <- binds]
+                         in M.fromList bs `M.union` @lhs.heap  --- XXX alpha-renaming? Or initial renaming okay?
+            next.rn    = @lhs.rn -- XXX alpha renaming
+
+  | OpCase  next.term  = let Case scrutine _ = uterm @lhs.term in scrutine
+            next.stack = let Term tag (Case _ alts) = @lhs.term in Frame tag (FScr alts @lhs.rn) : @lhs.stack
+
+
+  | OpUpdV  loc.focus  = let Frame tag (FUpd x) = head @lhs.stack in Term tag (Var x)
+  | OpUpd   loc.focus  = @lhs.term
+  | OpUpdV OpUpd
+            next.term  = @loc.focus
+            next.stack = tail @lhs.stack
+            next.heap  = let Frame tag (FUpd x) = head @lhs.stack in M.insert x (Term tag (uterm @lhs.term), @lhs.rn) @lhs.heap
+
+  | OpBetaV loc.focus  = @lhs.term
+  | OpBeta  loc.focus  = let Var var = uterm @lhs.term; in fst $ @lhs.heap M.! rename @lhs.rn var
+  | OpBetaV OpBeta
+            next.term  = let Lam _ body = uterm @loc.focus in body
+            next.stack = tail @lhs.stack
+            next.rn    = let FApp x' = topframe @lhs.stack
+                             Lam x _ = uterm @loc.focus
+                         in M.insert x x' @lhs.rn
+
+  | OpDataV loc.focus  = @lhs.term
+  | OpData  loc.focus  = let Var var = uterm @lhs.term; in fst $ @lhs.heap M.! rename @lhs.rn var
+  | OpDataV OpData
+            next.term  = snd $ fromAlt @loc.alt
+            next.stack = tail @lhs.stack
+            next.rn    = let FScr _ rn = topframe @lhs.stack
+                             Alt (Term _ (Con _ args)) _ = @loc.alt
+                             Con _ args' = uterm @loc.focus
+                         in M.fromList (args `zip` map (rename @lhs.rn) args') `M.union` rn  -- XXX order correct?
+            loc.alt    = let FScr alts _ = topframe @lhs.stack
+                             Con con _ = uterm @loc.focus
+                         in fromMaybe (error "none existing alternative") $ findAlt con alts
+
+
+{
+normalize :: State -> State
+normalize (State h k e rn) = {--trace (ppp resultState)--} state'
+  where state' = return_Syn_Step result
+        result = wrap_Step (sem_Step Step) $
+          Inh_Step { normalizeOnly_Inh_Step = True
+                   , heap_Inh_Step = h
+                   , stack_Inh_Step = k
+                   , term_Inh_Step = e
+                   , rn_Inh_Step = rn
+                   , hist_Inh_Step = []
+                   }
+
+reduce :: State -> State
+reduce (State h k e rn) = {--trace (ppp resultState)--} state'
+  where state' = return_Syn_Step result
+        result = wrap_Step (sem_Step Step) $
+          Inh_Step { normalizeOnly_Inh_Step = False
+                   , heap_Inh_Step = h
+                   , stack_Inh_Step = k
+                   , term_Inh_Step = e
+                   , rn_Inh_Step = rn
+                   , hist_Inh_Step = []
+                   }
+
+operation :: State -> Operation
+operation (State h k e rn) = op (map frame k) (uterm e)
+  where
+    op _            (Var x   ) | Just (e,_) <- M.lookup (rename rn x) h, (not.isValue $ e)  =  OpVar
+    op (FUpd _:_)   (v       ) | isVal v                                                    =  OpUpdV
+    op (FUpd _:_)   (Var x   ) | Just (v,_) <- M.lookup (rename rn x) h, isValue v          =  OpUpd
+    op _            (App _ _ )                                                              =  OpApp
+    op (FApp _:_)   (Lam _ _ )                                                              =  OpBetaV
+    op (FApp _:_)   (Var x   ) | Just (uterm -> Lam _ _,_) <- M.lookup (rename rn x) h      =  OpBeta
+    op _            (Let _ _ )                                                              =  OpLet
+    op (FScr _ _:_) (Con _ _ )                                                              =  OpDataV
+    op (FScr _ _:_) (Var x   ) | Just (uterm -> Con _ _,_) <- M.lookup (rename rn x) h      =  OpData
+    op _            (Case _ _)                                                              =  OpCase
+    op _            _                                                                       =  OpNone
+
+findAlt :: String -> Alts -> Maybe Alt
+findAlt con = find (\(Alt (Term _ (Con c _)) _) -> con == c)
+}
+
+
+{
+letRec :: Renaming -> [(Var, Term)] -> Term -> Term
+letRec rn [] e = e
+letRec rn bs e = Term (-1) (Let (map mkBind bs) e) -- XXX what to do with the tag here ?
+  where mkBind (x, e@(Term _ _)) = Bind x (renameTerm rn e)  -- XXX renaming possible incorrect
+
+findInvert :: Renaming -> Var -> Var
+findInvert rn x = fromMaybe (error "non-injective map") (invertMap rn) M.! x
+
+rebuild :: State -> Term -- XXX probably incorrect in renaming
+rebuild (State h [] e rn) = letRec rn (M.toList $ M.map fst h) (renameTerm rn e)  where
+rebuild (State h (Frame tag (FUpd x   ):k) e rn) = rebuild $ State h' k (Term tag (Var x')) rn
+                                                                  where x' = x --findInvert rn x
+                                                                        h' = M.insert x (e, rn) h
+rebuild (State h (Frame tag (FApp x   ):k) e rn) = rebuild $ State h  k (Term tag (App e x')) rn
+                                                                  where x' = x --findInvert rn x
+rebuild (State h (Frame tag (FScr alts _):k) e rn) = rebuild $ State h  k (Term tag (Case e alts)) rn
+}
+

@@ -1,0 +1,92 @@
+module {CCO.HM.HS.Terminate}{
+  tagbagState,
+  terminate,
+  taggedTerm,
+  History
+}{{--where--}}
+
+include "AG/Data.ag"
+
+imports
+{
+import CCO.HM.HS.Base
+
+import qualified Data.IntMap as IM
+}
+
+{
+type TagBag = IM.IntMap Int
+type History = [TagBag]
+
+terminate :: History -> State -> Bool
+terminate prevs here | stop = --trace (show prevs) $
+                              --trace (show (tagbagState here))
+                              False
+                     | otherwise = True
+  where stop = any (<| tagbagState here) prevs
+
+
+-- tagbag operations
+
+(<|) :: TagBag -> TagBag -> Bool
+tb1 <| tb2 = tb1 `setEqual` tb2 && cardinality tb1 <= cardinality tb2
+
+setEqual :: TagBag -> TagBag -> Bool
+setEqual tb1 tb2  = IM.keysSet tb1 == IM.keysSet tb2
+
+cardinality :: TagBag -> Int
+cardinality = IM.fold (+) 0
+}
+
+-- calculate tagbag
+
+attr State Heap HeapVal Stack StackFrame Term
+  syn tagbag use {IM.unionWith (+)} {IM.empty} :: TagBag
+
+sem State
+  | State lhs.tagbag = @heap.tagbag `IM.union` @stack.tagbag `IM.union` @term.tagbag
+
+sem Heap
+  | Entry lhs.tagbag = @val.tagbag `IM.union` @tl.tagbag
+
+sem Term
+  | Term  lhs.tagbag = IM.singleton @tag 1
+
+sem StackFrame
+  | Frame lhs.tagbag = IM.singleton @tag 1
+
+{
+tagbagState :: State -> TagBag
+tagbagState s = tagbag_Syn_State $ wrap_State (sem_State s) $
+  Inh_State {}
+}
+
+
+
+-- tag term (nested)
+
+attr Term UTerm Alts Alt Binds Bind
+  chn tagger :: Int
+  syn tagged :: self
+
+sem Term
+  | Term lhs.tagged = Term @loc.tag @expr.tagged
+         loc.tag :: uniqueref tagger
+
+sem Alt
+  | Alt  lhs.tagged = Alt @con.copy @expr.tagged  -- don't tag pattern term
+
+sem UTerm -- prevent chaining in higher order terms
+  | Var  lhs.tagger = @lhs.tagger
+  | Con  lhs.tagger = @lhs.tagger
+  | Lam  lhs.tagger = @body.tagger
+
+{
+nextUnique :: Int -> (Int, Int)
+nextUnique u = (u+1, u)
+
+taggedTerm :: Term -> Term
+taggedTerm e = tagged_Syn_Term $ wrap_Term (sem_Term e) $
+  Inh_Term { tagger_Inh_Term = 1 }
+}
+

@@ -1,0 +1,127 @@
+module {CCO.HM.HS.Base}{
+  heap,
+  stack,
+  term,
+  getRn,
+  updateHeap,
+  updateStack,
+  updateTerm,
+  frame,
+  topframe,
+  holes,
+  build,
+  mapHoles,
+  fromAlt,
+  fromBind,
+  uterm,
+  mapBind,
+  getTag,
+  bindVars,
+  bindVar,
+  conVars,
+  debug,
+  isVal,
+  isValue,
+  isVar,
+  cheap,
+  module Debug.Trace,
+  module CCO.HM.HS.Data,
+  module CCO.HM.HS.Types,
+}{{--where--}}
+
+optpragmas
+{
+{-# LANGUAGE ViewPatterns #-}
+}
+
+include "AG/Data.ag"
+
+imports
+{
+import CCO.HM.HS.Types
+import CCO.HM.HS.Data
+import Debug.Trace
+
+import qualified Data.Map as M
+import Data.Maybe
+}
+
+
+
+{
+
+heap :: State -> Heap
+heap (State h _ _ _) = h
+stack :: State -> Stack
+stack (State _ k _ _) = k
+term :: State -> Term
+term (State _ _ e _) = e
+getRn :: State -> Renaming
+getRn (State _ _ _ rn) = rn
+
+updateHeap :: Heap -> State -> State
+updateHeap h (State _ k e rn) = State h k e rn
+updateStack :: Stack -> State -> State
+updateStack k (State h _ e rn) = State h k e rn
+updateTerm :: Term -> State -> State
+updateTerm e (State h k _ rn) = State h k e rn
+
+frame :: StackFrame -> UStackFrame
+frame (Frame _ frame) = frame
+topframe :: Stack -> UStackFrame
+topframe [] = error "stack is empty"
+topframe (k:_) = frame k
+
+holes :: Bracket -> States
+holes (Bracket h _ _) = h
+build :: Bracket -> [Term] -> Term
+build (Bracket _ b _) = b
+
+mapHoles :: (State -> State) -> Bracket -> Bracket
+mapHoles f (Bracket holes rb brs) = Bracket (map f holes) rb brs
+
+fromAlt :: Alt -> (Term, Term)
+fromAlt (Alt p t) = (p,t)
+
+fromBind :: Bind -> (Var, Term)
+fromBind (Bind x e) = (x,e)
+
+uterm :: Term -> UTerm
+uterm (Term _ e) = e
+
+mapBind :: (Term -> Term) -> Bind -> Bind
+mapBind f (Bind x e) = Bind x (f e)
+
+getTag :: Term -> Tag
+getTag (Term tag _) = tag
+
+bindVars :: Binds -> [Var]
+bindVars = map bindVar
+
+bindVar :: Bind -> Var
+bindVar (Bind x _) = x
+
+conVars :: UTerm -> [Var]
+conVars (Con _ args) = args
+
+debug :: Show a => String -> a -> a
+debug label a = trace (label ++ ": " ++ show a) a
+
+
+isValue :: Term -> Bool
+isValue = isVal . uterm
+
+isVal :: UTerm -> Bool
+isVal (Con _ _) = True
+isVal (Lam _ _) = True
+isVal _ = False
+
+isVar :: Term -> Bool
+isVar (uterm -> Var _) = True
+isVar _ = False
+
+cheap :: Term -> Bool
+cheap e = isValue e || isVar e
+
+}
+

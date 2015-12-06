@@ -1,0 +1,49 @@
+module {CCO.HM.HS.DeadCode}{
+  deadCodeRemoval
+}{{--where--}}
+
+include "AG/Data.ag"
+
+imports
+{
+import CCO.HM.HS.Base
+import CCO.HM.HS.FreeVars
+
+import qualified Data.Set as S
+import qualified Data.List as L
+}
+
+
+attr Term UTerm Binds Bind Alts Alt
+  syn clean :: self
+
+sem UTerm
+  | Let   lhs.clean = case cleanBinds @binds.clean (fvs @body.clean) of
+                        [] -> uterm @body.clean
+                        binds -> Let binds @body.clean
+
+{
+deadCodeRemoval :: Term -> Term
+deadCodeRemoval e = clean_Syn_Term $ wrap_Term (sem_Term e) $ Inh_Term {}
+
+cleanBinds :: Binds -> [Var] -> Binds
+cleanBinds bs fv = filter used bs
+  where used (Bind x _) = x `elem` (fvsUsedBinds bs fv {--++ map (('h':).show) [0..99]--})
+
+fvsUsedBinds :: Binds -> [Var] -> [Var]
+fvsUsedBinds bs = converge (==) . iterate fvsUsedBinds'
+  where fvsUsedBinds' fv = L.nub (fv ++ fvsBinds (filter used bs))
+          where used (Bind x _) = x `elem` fv
+
+fvsBinds :: Binds -> [Var]
+fvsBinds = L.nub . concatMap fvsBind
+  where fvsBind (Bind _ e) = fvs e
+
+
+-- util
+
+converge :: (a -> a -> Bool) -> [a] -> a
+converge p (x:ys@(y:_))
+    | p x y     = y
+    | otherwise = converge p ys
+}

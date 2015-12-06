@@ -1,0 +1,109 @@
+module {CCO.HM.HS.Data}{}{{--where--}}
+
+imports
+{
+import CCO.HM.HS.Types
+
+import qualified Data.Map
+}
+
+
+-------------------------------------------------------------------------------
+-- Syntax
+-------------------------------------------------------------------------------
+
+data Term
+  | Term  tag :: {Tag}  expr :: UTerm
+
+data UTerm
+  | Var   var :: {Var}                       -- VALUE
+  | Lam   var :: {Var}        body :: Term
+  | App   func :: Term        arg :: {Var}
+  | Con   con :: {String}     args :: {[Var]}     -- VALUE
+  | Case  expr :: Term        alts :: Alts
+  | Let   binds :: Binds      body :: Term  -- recusive let
+
+data Alt
+  | Alt   con :: Term   expr :: Term
+
+data Bind
+  | Bind  var :: {Var}  expr :: Term
+
+type Terms = [Term]
+type Alts = [Alt]
+type Binds = [Bind]
+
+
+deriving Terms Term UTerm Alts Alt Binds Bind : Show, Eq
+
+attr Terms Term UTerm Alts Alt Binds Bind
+  syn copy :: self
+
+data Step | Step
+
+
+-------------------------------------------------------------------------------
+-- Super Compiler State
+-------------------------------------------------------------------------------
+
+type States = [State]
+data State
+  | State  heap :: Heap   stack :: Stack   term :: Term   rn :: {Renaming}
+
+type Heap = map {Var} HeapVal
+type HeapVal = (Term, {Renaming})
+
+type Stack = [StackFrame]
+data StackFrame
+  | Frame  tag :: {Tag}  frame :: UStackFrame
+data UStackFrame
+  | FUpd  x :: {Var}
+  | FApp  x :: {Var}
+  | FScr  alts :: Alts  rn :: {Renaming}
+
+deriving States State Heap HeapVal Stack StackFrame UStackFrame : Show, Eq
+
+attr States State Heap HeapVal Stack StackFrame UStackFrame
+  syn copy :: self
+
+
+
+-------------------------------------------------------------------------------
+-- Super Compiler Drive
+-------------------------------------------------------------------------------
+
+type Brackets = [Bracket]
+data Bracket
+  | Bracket  holes :: States
+             build :: {[Term] -> Term}
+             brackets :: Brackets  -- ^ DEBUGGING, store subcompoment brackets that were pass through 'plusBrackets' in order to create the bracket.
+
+
+data Promise
+  | Promise  tag :: {Tag}  name :: {Var}  fvs :: {[Var]}  state :: State
+
+type Promises = [Promise]
+
+deriving Promises Promise : Eq, Show
+
+attr Brackets Bracket Promises Promise
+  syn copy :: self
+
+
+
+
+
+
+data Operation
+  | OpVar | OpApp | OpCase | OpLet
+  | OpUpd | OpBeta | OpData
+  | OpUpdV | OpBetaV | OpDataV
+  | OpNone
+deriving Operation : Show, Eq
+
+
+
+
+
+
+
