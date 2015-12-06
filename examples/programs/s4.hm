@@ -1,0 +1,3 @@
+let idA = (\a.idB a)
+    idB = (\b.idA b)
+in f idA idB idA y

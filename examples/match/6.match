@@ -1,0 +1,8 @@
+match
+(
+  x y z
+)
+(
+  z y x
+)
+

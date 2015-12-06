@@ -1,0 +1,16 @@
+match
+(
+  let
+    f = \x. Pair x x
+    x = two
+  in f x
+
+)
+(
+  let
+    g = \b. Pair b b
+    c = two
+  in case g y of
+       Pair a b -> h a b c
+     end
+)

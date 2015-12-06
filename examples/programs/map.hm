@@ -1,0 +1,18 @@
+let
+  true = True
+  false = False
+
+  not = \y.case y of
+            False -> True
+            True -> False
+           end
+
+  map = \f.\xs. case xs of
+                  Cons y ys -> let g = f
+                                   y' = g y
+                                   ys' = map g ys
+                               in Cons y' ys'
+                  Nil -> Nil
+                end
+in
+  map not zs

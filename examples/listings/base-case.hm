@@ -1,0 +1,4 @@
+case x of
+  True -> False
+  False -> True
+end

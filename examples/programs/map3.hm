@@ -1,0 +1,5 @@
+let
+  one = One
+  ones = Cons one ones
+in
+  ones

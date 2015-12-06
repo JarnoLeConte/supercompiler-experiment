@@ -1,0 +1,6 @@
+
+case x of
+  True -> y
+  False -> y
+  Other -> y
+end

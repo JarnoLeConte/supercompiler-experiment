@@ -1,0 +1,3 @@
+let a = id y
+    id = \x.x
+in (Just a)

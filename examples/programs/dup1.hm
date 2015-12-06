@@ -1,0 +1,6 @@
+let id = \x.x
+    true = True
+    false = False
+    t = id true
+    f = id false
+in Eq t f

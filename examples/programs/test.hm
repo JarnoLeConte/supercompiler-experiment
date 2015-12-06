@@ -1,0 +1,14 @@
+
+let
+  one = One
+  id1 = \x. let id' = \x.x
+            in (\x.x) id' x
+  id2 = \y.  let id' = \y.y
+             in (\y.y) id' y
+  id3 = \z. case (\z.z) id' z of
+              One -> Yes
+              Two -> False
+            end
+in
+
+  id1 id2 id id3 one

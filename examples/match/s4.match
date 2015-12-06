@@ -1,0 +1,11 @@
+match
+(
+  let idA = (\a.idB a)
+      idB = (\b.idA b)
+  in f idA idB idA y
+)
+(
+  let idC = (\c.idD c)
+      idD = (\d.idC d)
+  in g idC idD idC z
+)

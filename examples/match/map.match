@@ -1,0 +1,23 @@
+match
+(
+  let
+    map' = \f'.\xs'. case xs' of
+                       Nil' -> Nil'
+                       Cons y' ys' -> let y_' = f' y'
+                                          ys_' = map' f' ys'
+                                      in Cons y_' ys_'
+                  end
+  in
+    map' id' list'
+)
+(
+  let
+    map = \f.\xs. case xs of
+                    Nil -> Nil
+                    Cons y ys -> let y_ = f y
+                                     ys_ = map f ys
+                                 in Cons y_ ys_
+                  end
+  in
+    map id list
+)

@@ -1,0 +1,17 @@
+let
+
+  one = One
+  ones = Cons one ones
+
+  return = \x. Just x
+
+  map = \f.\xs. case xs of
+                  Nil -> Nil
+                  Cons y ys -> let y' = f y
+                                   ys' = map f ys
+                               in Cons y' ys'
+
+                end
+
+in
+  map return ones

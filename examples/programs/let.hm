@@ -1,0 +1,17 @@
+let test = let     false = False
+                   true = True
+
+                   not = case Left true false of
+                          Left x y -> x
+                          Right x y -> y
+                         end
+                   left = \x.\y.x
+                   right = \x.\y.y
+
+                   left' = left a b
+                   right' = right a b
+                   not1 = not x
+                   not2 = not y
+
+            in left1 left2 not not1 not2 true
+in test

@@ -1,0 +1,3 @@
+let id = \x.x
+    x = id a
+in Eq x x

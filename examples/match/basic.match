@@ -1,0 +1,21 @@
+match
+(
+  let
+    true = True
+    false = False
+  in
+    (\x. let id = \a.a
+             id2 = id id
+          in f' id2 x)
+    y'
+)
+(
+  let
+    true = True
+    false = False
+  in
+    (\x. let id = \a.a
+             id2 = id id
+          in f id2 x)
+    y
+)

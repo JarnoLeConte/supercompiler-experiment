@@ -1,0 +1,22 @@
+let
+
+  one = One
+
+  nil = Nil
+  cons1 = Cons one nil
+  cons2 = Cons one cons1
+  cons3 = Cons one cons2
+  cons4 = Cons one cons3
+
+  return = \x. Just x
+
+  map = \f.\xs. case xs of
+                  Nil -> Nil
+                  Cons y ys -> let y' = f y
+                                   ys' = map f ys
+                               in Cons y' ys'
+
+                end
+
+in
+  map return cons4

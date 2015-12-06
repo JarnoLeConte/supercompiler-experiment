@@ -1,0 +1,17 @@
+match
+(
+  case as of
+    Nil -> Nil
+    Cons y ys -> let y' = f y
+                     ys' = map f ys
+                 in Cons y' ys'
+  end
+)
+(
+  case bs of
+      Nil -> Nil
+      Cons y ys -> let y' = f y
+                       ys' = map f ys
+                   in Cons y' ys'
+    end
+)

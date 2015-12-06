@@ -1,0 +1,13 @@
+match
+(
+  case x of
+    T -> F
+    F -> T
+  end
+)
+(
+  case x of
+    T -> let x = T in F
+    F -> let x = F in T
+  end
+)

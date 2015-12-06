@@ -1,0 +1,20 @@
+let
+
+  one = One
+  ones = Cons one ones
+
+  return1 = \x. Just x
+  return2 = \x. Left x
+
+  map = \f.\xs. case xs of
+                  Nil -> Nil
+                  Cons y ys -> let y' = f y
+                                   ys' = map f ys
+                               in Cons y' ys'
+
+                end
+
+in
+
+  let xs = map return1 ones
+  in map return2 xs

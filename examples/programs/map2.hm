@@ -1,0 +1,6 @@
+let
+  one = One
+  repeat = \x. let xs = repeat x
+               in Cons x xs
+in
+  repeat one

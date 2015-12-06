@@ -1,0 +1,7 @@
+case x of
+        True -> False
+        False -> True
+        Otherwise -> let f = id
+                                  g = not
+                              in (f g) a
+ end
